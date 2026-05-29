@@ -1,6 +1,6 @@
 [package]
 name = "solidgate-connector"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["gorin <mxmgorin@gmail.com>"]
 
@@ -12,4 +12,5 @@ tokio = { version = "*", features = ["full"] }
 hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
+base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
