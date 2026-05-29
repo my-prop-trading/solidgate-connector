@@ -1,0 +1,15 @@
+[package]
+name = "solidgate-connector"
+version = "0.1.0"
+edition = "2021"
+authors = ["gorin <mxmgorin@gmail.com>"]
+
+[dependencies]
+flurl = { git = "https://github.com/MyJetTools/fl-url.git", rev = "d835b8c287302952550b604aeb1f122ac6e3a63b" }
+serde = { version = "*", features = ["derive"] }
+serde_json = "*"
+tokio = { version = "*", features = ["full"] }
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
