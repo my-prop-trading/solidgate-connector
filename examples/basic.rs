@@ -6,6 +6,7 @@ use std::time::Duration;
 async fn main() {
     let api = SolidGateApi::new(
         "https://subscriptions.solidgate.com/api/v1",
+        "https://api.solidgate.com/api/v1",
         std::env::var("SOLIDGATE_PUBLIC_KEY").unwrap_or_default(),
         std::env::var("SOLIDGATE_SECRET_KEY").unwrap_or_default(),
         Duration::from_secs(15),
