@@ -9,6 +9,11 @@ use serde::de::DeserializeOwned;
 use std::fmt::Debug;
 use std::time::Duration;
 
+/// SolidGate production subscriptions host (cancel / subscription endpoints).
+pub const SUBSCRIPTIONS_API_URL: &str = "https://subscriptions.solidgate.com/api/v1";
+/// SolidGate production general API host (webhook-endpoint management).
+pub const GENERAL_API_URL: &str = "https://api.solidgate.com/api/v1";
+
 pub struct SolidGateApi {
     /// Subscriptions host: `https://subscriptions.solidgate.com/api/v1`.
     base_url: String,
@@ -20,10 +25,27 @@ pub struct SolidGateApi {
 }
 
 impl SolidGateApi {
+    /// Build a client against SolidGate's production hosts ([`SUBSCRIPTIONS_API_URL`] +
+    /// [`GENERAL_API_URL`]). These hosts are fixed — sandbox vs live is selected by the
+    /// public/secret key pair, not the URL. Use [`Self::with_urls`] only to override (tests).
+    pub fn new(
+        public_key: impl Into<String>,
+        secret_key: impl Into<String>,
+        timeout: Duration,
+    ) -> Self {
+        Self::with_urls(
+            SUBSCRIPTIONS_API_URL,
+            GENERAL_API_URL,
+            public_key,
+            secret_key,
+            timeout,
+        )
+    }
+
     /// * `base_url` — subscriptions host, e.g. `https://subscriptions.solidgate.com/api/v1`.
     /// * `general_api_url` — general API host, e.g. `https://api.solidgate.com/api/v1`
     ///   (webhook-endpoint management is served from here, not from the subscriptions host).
-    pub fn new(
+    pub fn with_urls(
         base_url: impl Into<String>,
         general_api_url: impl Into<String>,
         public_key: impl Into<String>,
