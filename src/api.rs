@@ -1,8 +1,8 @@
 use crate::generate_signature;
 use crate::model::{
     ApiRequest, ApiResponse, CancelSubscriptionRequest, CancelSubscriptionResponse,
-    CreateWebhookEndpointRequest, ListWebhookEndpointsResponse, UpdateWebhookEndpointRequest,
-    WebhookEndpoint,
+    CreateWebhookEndpointRequest, ErrorEnvelope, ListWebhookEndpointsResponse,
+    UpdateWebhookEndpointRequest, WebhookEndpoint,
 };
 use flurl::{hyper::Method, FlUrl};
 use serde::de::DeserializeOwned;
@@ -217,6 +217,16 @@ impl SolidGateApi {
             .map_err(|err| format!("FlUrl failed to receive_body: {err:?}"))?;
         let body_str = String::from_utf8(body_bytes)
             .map_err(|err| format!("Non-utf8 response body: {err:?}"))?;
+
+        // SolidGate may return an error envelope even with a 2xx status — surface it
+        // as a readable error instead of letting the caller fail to deserialize it.
+        if let Ok(ErrorEnvelope { error: Some(err) }) = serde_json::from_str(&body_str) {
+            return Err(format!(
+                "SolidGate API error {}: {}. Url: {method:?} {url}",
+                err.code,
+                err.messages.join("; ")
+            ));
+        }
 
         if status_code > 299 {
             return Err(format!(

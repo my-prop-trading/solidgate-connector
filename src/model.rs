@@ -12,6 +12,21 @@ pub struct ApiResponse<T> {
     pub data: T,
 }
 
+/// SolidGate error envelope, e.g. `{"error":{"code":"1.01","messages":["Authentication failed"]}}`.
+/// SolidGate sometimes returns this with a 2xx status, so we detect it explicitly.
+#[derive(Debug, Deserialize)]
+pub struct ErrorEnvelope {
+    pub error: Option<SolidGateApiError>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SolidGateApiError {
+    #[serde(default)]
+    pub code: String,
+    #[serde(default)]
+    pub messages: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum CancelSubscriptionCode {
     /// Customer-initiated cancellation. Default used by academy-bridge.
@@ -146,6 +161,22 @@ mod tests {
             json,
             r#"{"url":"https://example.com/cb","event_types":["subscription.updated.v2"]}"#
         );
+    }
+
+    #[test]
+    fn error_envelope_parses() {
+        let raw = r#"{"error":{"code":"1.01","messages":["Authentication failed"]}}"#;
+        let env: ErrorEnvelope = serde_json::from_str(raw).unwrap();
+        let err = env.error.expect("error present");
+        assert_eq!(err.code, "1.01");
+        assert_eq!(err.messages, vec!["Authentication failed".to_string()]);
+    }
+
+    #[test]
+    fn success_body_has_no_error() {
+        let raw = r#"{"id":"we_1","url":"https://e.com","status":"active"}"#;
+        let env: ErrorEnvelope = serde_json::from_str(raw).unwrap();
+        assert!(env.error.is_none());
     }
 
     #[test]
