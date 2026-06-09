@@ -70,6 +70,32 @@ impl SolidGateApi {
         &self.general_api_url
     }
 
+    /// Masked credential summary for diagnostics/logging. Never reveals secret material: shows the
+    /// SolidGate key-type tag (`api_pk_`/`api_sk_` vs `wh_pk_`/`wh_sk_`), length, and a whitespace
+    /// flag. Catches the common 1.01-auth causes: wrong key type, swapped public/secret, stray
+    /// whitespace, or a truncated value — none of which SolidGate's response distinguishes.
+    pub fn credentials_debug(&self) -> String {
+        // public key is the merchant identifier (not secret) — show a longer prefix; secret key
+        // gets only its type tag.
+        let pk_prefix: String = self.public_key.chars().take(12).collect();
+        let sk_type: String = self.secret_key.chars().take(7).collect();
+        let pk_ws = if self.public_key.trim().len() != self.public_key.len() {
+            ", HAS_WHITESPACE"
+        } else {
+            ""
+        };
+        let sk_ws = if self.secret_key.trim().len() != self.secret_key.len() {
+            ", HAS_WHITESPACE"
+        } else {
+            ""
+        };
+        format!(
+            "public_key(merchant): prefix={pk_prefix:?} len={}{pk_ws}; secret_key: type={sk_type:?} len={}{sk_ws}",
+            self.public_key.len(),
+            self.secret_key.len()
+        )
+    }
+
     /// Cancel a subscription. Pass `force=false` to cancel at the end of the billing period
     /// (subscription stays active until `expired_at`), `true` for immediate termination.
     pub async fn cancel_subscription(
@@ -219,11 +245,14 @@ impl SolidGateApi {
         let body_str = String::from_utf8(body_bytes)
             .map_err(|err| format!("Non-utf8 response body: {err:?}"))?;
 
+        // Masked merchant (public key) actually sent — so auth failures show which key was used.
+        let merchant_prefix: String = self.public_key.chars().take(12).collect();
+
         // SolidGate may return an error envelope even with a 2xx status — surface it
         // as a readable error instead of letting the caller fail to deserialize it.
         if let Ok(ErrorEnvelope { error: Some(err) }) = serde_json::from_str(&body_str) {
             return Err(format!(
-                "SolidGate API error {}: {}. Url: {method:?} {url}",
+                "SolidGate API error {}: {}. Url: {method:?} {url}. merchant_prefix={merchant_prefix:?}. Raw response: {body_str}",
                 err.code,
                 err.messages.join("; ")
             ));
