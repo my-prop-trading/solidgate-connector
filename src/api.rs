@@ -4,6 +4,7 @@ use crate::model::{
     CreateWebhookEndpointRequest, ErrorEnvelope, ListWebhookEndpointsResponse,
     UpdateWebhookEndpointRequest, WebhookEndpoint,
 };
+use flurl::body::FlUrlBody;
 use flurl::{hyper::Method, FlUrl};
 use serde::de::DeserializeOwned;
 use std::fmt::Debug;
@@ -193,16 +194,16 @@ impl SolidGateApi {
             flurl = flurl.append_query_param(*name, Some(value.as_str()));
         }
 
-        let body_bytes: Option<Vec<u8>> = if body.is_empty() {
-            None
+        let fl_body = if body.is_empty() {
+            FlUrlBody::Empty
         } else {
-            Some(body.clone().into_bytes())
+            FlUrlBody::Json(body.clone().into_bytes())
         };
 
         let result = match method {
-            Method::POST => flurl.post(body_bytes).await,
-            Method::PUT => flurl.put(body_bytes).await,
-            Method::PATCH => flurl.patch(body_bytes).await,
+            Method::POST => flurl.post(fl_body).await,
+            Method::PUT => flurl.put(fl_body).await,
+            Method::PATCH => flurl.patch(fl_body).await,
             Method::GET => flurl.get().await,
             Method::DELETE => flurl.delete().await,
             other => return Err(format!("unsupported method {other:?}")),
