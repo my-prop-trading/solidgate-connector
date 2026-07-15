@@ -2,7 +2,8 @@ use crate::generate_signature;
 use crate::model::{
     ApiRequest, ApiResponse, CancelSubscriptionRequest, CancelSubscriptionResponse,
     CreateWebhookEndpointRequest, ErrorEnvelope, ListWebhookEndpointsResponse,
-    UpdateWebhookEndpointRequest, WebhookEndpoint,
+    RestoreSubscriptionRequest, RestoreSubscriptionResponse, UpdateWebhookEndpointRequest,
+    WebhookEndpoint,
 };
 use flurl::body::FlUrlBody;
 use flurl::{hyper::Method, FlUrl};
@@ -106,6 +107,24 @@ impl SolidGateApi {
         self.send_signed(
             &self.base_url,
             "subscription/cancel",
+            Method::POST,
+            &[],
+            Some(body),
+        )
+        .await
+    }
+
+    /// Restore a previously cancelled subscription. SolidGate requires the subscription to be in
+    /// `cancelled` status and rejects the call if an active/processing subscription already exists
+    /// for the same customer+product.
+    pub async fn restore_subscription(
+        &self,
+        req: &ApiRequest<RestoreSubscriptionRequest>,
+    ) -> Result<ApiResponse<RestoreSubscriptionResponse>, String> {
+        let body = serde_json::to_string(&req.data).map_err(|e| format!("{e:?}"))?;
+        self.send_signed(
+            &self.base_url,
+            "subscription/restore",
             Method::POST,
             &[],
             Some(body),

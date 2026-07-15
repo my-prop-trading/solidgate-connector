@@ -59,6 +59,23 @@ pub struct CancelSubscriptionResponse {
     pub status: Option<String>,
 }
 
+/// Restore a previously cancelled subscription (SolidGate `POST /subscription/restore`).
+/// SolidGate only restores a subscription whose status is `cancelled` and for which no other
+/// active/processing subscription exists for the same customer+product.
+#[derive(Debug, Serialize)]
+pub struct RestoreSubscriptionRequest {
+    pub subscription_id: String,
+    /// Optional new expiration (`YYYY-MM-DD HH:MM:SS`). A past value is bumped to "now" by SolidGate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expired_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RestoreSubscriptionResponse {
+    #[serde(default)]
+    pub status: Option<String>,
+}
+
 // ----------------------------------------------------------------------------
 // Webhook endpoint management (SolidGate "Manage webhooks" API).
 // Lives on the general API host (https://api.solidgate.com/api/v1), not on the
