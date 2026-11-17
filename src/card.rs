@@ -128,7 +128,8 @@ pub struct CardTransaction {
     pub error: Option<SolidGateApiError>,
 }
 
-/// An order with its last transaction, as `/recurring` and `/status` answer.
+/// An order with its last transaction, as `/recurring`, `/status` and the
+/// `card_gate.order.updated` webhook carry it.
 #[derive(Debug, Deserialize)]
 pub struct CardOrderResponse {
     pub order: CardOrder,
@@ -161,6 +162,35 @@ impl CardTransaction {
             .as_ref()
             .or_else(|| self.card.as_ref().and_then(|c| c.card_token.as_ref()))
     }
+}
+
+/// `card_gate.chargeback.received`: a chargeback opened against an order.
+#[derive(Debug, Deserialize)]
+pub struct ChargebackWebhookModel {
+    pub order: ChargebackOrder,
+    pub chargeback: Chargeback,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ChargebackOrder {
+    pub order_id: String,
+    #[serde(default)]
+    pub amount: Option<i64>,
+    #[serde(default)]
+    pub currency: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Chargeback {
+    /// E.g. `1st_chb`.
+    #[serde(default, rename = "type")]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub reason_code: Option<String>,
+    #[serde(default)]
+    pub reason_description: Option<String>,
 }
 
 #[cfg(test)]
@@ -231,5 +261,20 @@ mod tests {
         assert_eq!(json["payment_type"], "1-click");
         assert_eq!(json["platform"], "WEB");
         assert!(json.get("success_url").is_none());
+    }
+
+    #[test]
+    fn parses_chargeback_webhook() {
+        let body = r#"{
+            "order": {"id": "pay_1", "order_id": "academy-1", "amount": 100, "currency": "USD", "status": "settle_ok"},
+            "chargeback": {"id": 147712, "type": "1st_chb", "status": "in_progress", "reason_code": "10.4",
+                           "reason_description": "Fraud - Card-Absent Environment"},
+            "chargeback_flow": []
+        }"#;
+        let webhook: ChargebackWebhookModel =
+            serde_json::from_str(body).expect("reference chargeback must parse");
+        assert_eq!(webhook.order.order_id, "academy-1");
+        assert_eq!(webhook.chargeback.kind.as_deref(), Some("1st_chb"));
+        assert_eq!(webhook.chargeback.reason_code.as_deref(), Some("10.4"));
     }
 }
