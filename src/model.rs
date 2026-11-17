@@ -205,3 +205,49 @@ mod tests {
         assert_eq!(ep.event_types, vec!["subscription.updated.v2".to_string()]);
     }
 }
+
+// ----------------------------------------------------------------------------
+// Invoices and orders of a subscription (subscriptions host).
+// ----------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct InvoiceListRequest {
+    pub subscription_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InvoiceListResponse {
+    #[serde(default)]
+    pub data: Vec<SubscriptionInvoice>,
+}
+
+/// A billing event of a subscription; `status` is processing, retry, success or fail.
+#[derive(Debug, Deserialize)]
+pub struct SubscriptionInvoice {
+    pub id: String,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct OrderListRequest {
+    pub invoice_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OrderListResponse {
+    #[serde(default)]
+    pub data: Vec<InvoiceOrder>,
+}
+
+/// A payment attempt of an invoice; `id` is the `order_id` of the card payments API.
+#[derive(Debug, Deserialize)]
+pub struct InvoiceOrder {
+    pub id: String,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+}

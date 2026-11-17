@@ -1,9 +1,11 @@
+use crate::card::{CardOrderResponse, OrderStatusRequest, RecurringRequest};
 use crate::generate_signature;
 use crate::model::{
     ApiRequest, ApiResponse, CancelSubscriptionRequest, CancelSubscriptionResponse,
-    CreateWebhookEndpointRequest, ErrorEnvelope, ListWebhookEndpointsResponse,
-    RestoreSubscriptionRequest, RestoreSubscriptionResponse, UpdateWebhookEndpointRequest,
-    WebhookEndpoint,
+    CreateWebhookEndpointRequest, ErrorEnvelope, InvoiceListRequest, InvoiceListResponse,
+    InvoiceOrder, ListWebhookEndpointsResponse, OrderListRequest, OrderListResponse,
+    RestoreSubscriptionRequest, RestoreSubscriptionResponse, SubscriptionInvoice,
+    UpdateWebhookEndpointRequest, WebhookEndpoint,
 };
 use flurl::body::FlUrlBody;
 use flurl::{hyper::Method, FlUrl};
@@ -15,12 +17,15 @@ use std::time::Duration;
 pub const SUBSCRIPTIONS_API_URL: &str = "https://subscriptions.solidgate.com/api/v1";
 /// SolidGate production general API host (webhook-endpoint management).
 pub const GENERAL_API_URL: &str = "https://api.solidgate.com/api/v1";
+/// SolidGate card payments host (charges by token, order status).
+pub const CARD_API_URL: &str = "https://pay.solidgate.com/api/v1";
 
 pub struct SolidGateApi {
     /// Subscriptions host: `https://subscriptions.solidgate.com/api/v1`.
     base_url: String,
     /// General API host: `https://api.solidgate.com/api/v1` (webhook management lives here).
     general_api_url: String,
+    card_api_url: String,
     public_key: String,
     secret_key: String,
     timeout: Duration,
@@ -57,10 +62,17 @@ impl SolidGateApi {
         Self {
             base_url: base_url.into(),
             general_api_url: general_api_url.into(),
+            card_api_url: CARD_API_URL.to_string(),
             public_key: public_key.into(),
             secret_key: secret_key.into(),
             timeout,
         }
+    }
+
+    /// Replaces the card payments host (tests).
+    pub fn with_card_api_url(mut self, card_api_url: impl Into<String>) -> Self {
+        self.card_api_url = card_api_url.into();
+        self
     }
 
     pub fn base_url(&self) -> &str {
@@ -132,6 +144,73 @@ impl SolidGateApi {
         .await
     }
 
+    /// Charges the card behind a saved token; returns the order in its current status.
+    /// The request carries the token and the customer's email, so errors leave the body out.
+    pub async fn charge_recurring(
+        &self,
+        req: &RecurringRequest,
+    ) -> Result<CardOrderResponse, String> {
+        let body = serde_json::to_string(req).map_err(|e| format!("{e:?}"))?;
+        self.send_signed_with(
+            &self.card_api_url,
+            "recurring",
+            Method::POST,
+            &[],
+            Some(body),
+            BodyInErrors::Hidden,
+        )
+        .await
+    }
+
+    /// The order with its transactions, including the card token of a paid one.
+    pub async fn order_status(&self, order_id: &str) -> Result<CardOrderResponse, String> {
+        let body = serde_json::to_string(&OrderStatusRequest {
+            order_id: order_id.to_string(),
+        })
+        .map_err(|e| format!("{e:?}"))?;
+        self.send_signed(&self.card_api_url, "status", Method::POST, &[], Some(body))
+            .await
+    }
+
+    /// Invoices of a subscription, one per billing event.
+    pub async fn list_subscription_invoices(
+        &self,
+        subscription_id: &str,
+    ) -> Result<Vec<SubscriptionInvoice>, String> {
+        let body = serde_json::to_string(&InvoiceListRequest {
+            subscription_id: subscription_id.to_string(),
+        })
+        .map_err(|e| format!("{e:?}"))?;
+        let response: InvoiceListResponse = self
+            .send_signed(
+                &self.base_url,
+                "subscription/invoice/list",
+                Method::POST,
+                &[],
+                Some(body),
+            )
+            .await?;
+        Ok(response.data)
+    }
+
+    /// Payment attempts of an invoice.
+    pub async fn list_invoice_orders(&self, invoice_id: &str) -> Result<Vec<InvoiceOrder>, String> {
+        let body = serde_json::to_string(&OrderListRequest {
+            invoice_id: invoice_id.to_string(),
+        })
+        .map_err(|e| format!("{e:?}"))?;
+        let response: OrderListResponse = self
+            .send_signed(
+                &self.base_url,
+                "subscription/order/list",
+                Method::POST,
+                &[],
+                Some(body),
+            )
+            .await?;
+        Ok(response.data)
+    }
+
     /// Register a new webhook endpoint on SolidGate's side.
     pub async fn create_webhook_endpoint(
         &self,
@@ -190,8 +269,15 @@ impl SolidGateApi {
     /// Delete a webhook endpoint.
     pub async fn delete_webhook_endpoint(&self, id: &str) -> Result<(), String> {
         let path = format!("webhooks/endpoints/{id}");
-        self.send_signed_raw(&self.general_api_url, &path, Method::DELETE, &[], None)
-            .await?;
+        self.send_signed_raw(
+            &self.general_api_url,
+            &path,
+            Method::DELETE,
+            &[],
+            None,
+            BodyInErrors::Shown,
+        )
+        .await?;
         Ok(())
     }
 
@@ -204,8 +290,21 @@ impl SolidGateApi {
         query: &[(&'static str, String)],
         body: Option<String>,
     ) -> Result<T, String> {
+        self.send_signed_with(base_url, path, method, query, body, BodyInErrors::Shown)
+            .await
+    }
+
+    async fn send_signed_with<T: DeserializeOwned + Debug>(
+        &self,
+        base_url: &str,
+        path: &str,
+        method: Method,
+        query: &[(&'static str, String)],
+        body: Option<String>,
+        body_in_errors: BodyInErrors,
+    ) -> Result<T, String> {
         let response = self
-            .send_signed_raw(base_url, path, method.clone(), query, body)
+            .send_signed_raw(base_url, path, method.clone(), query, body, body_in_errors)
             .await?;
         serde_json::from_str(&response).map_err(|err| {
             format!("Failed to deserialize: {err:?}. Url: {method:?} {base_url}/{path}. Body: {response}")
@@ -223,8 +322,13 @@ impl SolidGateApi {
         method: Method,
         query: &[(&'static str, String)],
         body: Option<String>,
+        body_in_errors: BodyInErrors,
     ) -> Result<String, String> {
         let body = body.unwrap_or_default();
+        let shown_body = match body_in_errors {
+            BodyInErrors::Shown => body.as_str(),
+            BodyInErrors::Hidden => "<hidden>",
+        };
         let signature = generate_signature(&self.public_key, &self.secret_key, body.as_bytes());
 
         let url = format!("{}/{}", base_url.trim_end_matches('/'), path);
@@ -254,7 +358,8 @@ impl SolidGateApi {
             other => return Err(format!("unsupported method {other:?}")),
         };
 
-        let resp = result.map_err(|err| format!("FlUrl failed: Url: {url}. Request: {body}. {err:?}"))?;
+        let resp = result
+            .map_err(|err| format!("FlUrl failed: Url: {url}. Request: {shown_body}. {err:?}"))?;
 
         let status_code = resp.get_status_code();
         let body_bytes = resp
@@ -280,10 +385,17 @@ impl SolidGateApi {
         if status_code > 299 {
             return Err(format!(
                 "Response code: {status_code}. Url: {method:?} {url}. \
-                 Request: {body}. Response: {body_str}"
+                 Request: {shown_body}. Response: {body_str}"
             ));
         }
 
         Ok(body_str)
     }
+}
+
+/// Whether an error message may quote the request body.
+#[derive(Clone, Copy)]
+enum BodyInErrors {
+    Shown,
+    Hidden,
 }
