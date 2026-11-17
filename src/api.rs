@@ -1,4 +1,5 @@
 use crate::card::{CardOrderResponse, OrderStatusRequest, RecurringRequest};
+use crate::form::{payment_form_data, PaymentFormData, PaymentIntent};
 use crate::generate_signature;
 use crate::model::{
     ApiRequest, ApiResponse, CancelSubscriptionRequest, CancelSubscriptionResponse,
@@ -160,6 +161,11 @@ impl SolidGateApi {
             BodyInErrors::Hidden,
         )
         .await
+    }
+
+    /// The data to initialize the payment form with, signed by this merchant.
+    pub fn payment_form(&self, intent: &PaymentIntent) -> Result<PaymentFormData, String> {
+        payment_form_data(&self.public_key, &self.secret_key, intent)
     }
 
     /// The order with its transactions, including the card token of a paid one.

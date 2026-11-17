@@ -1,6 +1,6 @@
 [package]
 name = "solidgate-connector"
-version = "0.6.1"
+version = "0.7.0"
 edition = "2021"
 authors = ["gorin <mxmgorin@gmail.com>"]
 
@@ -14,3 +14,6 @@ sha2 = "0.10"
 hex = "0.4"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+getrandom = "0.2"
