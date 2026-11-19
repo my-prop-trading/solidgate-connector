@@ -36,6 +36,9 @@ pub struct PaymentIntent {
     pub success_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fail_url: Option<String>,
+    /// Language of the form and of the receipt, 2-3 letters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
 }
 
 /// The `merchantData` of the form SDK.
@@ -113,6 +116,7 @@ mod tests {
             platform: crate::card::Platform::Web,
             success_url: None,
             fail_url: None,
+            language: Some("en".to_string()),
         };
         let data = payment_form_data("api_pk_1", KEY, &intent).expect("the key is long enough");
         assert_eq!(data.merchant, "api_pk_1");
