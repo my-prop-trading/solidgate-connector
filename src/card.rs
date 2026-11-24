@@ -142,6 +142,9 @@ pub struct CardOrderResponse {
     /// Set while the order waits for 3DS.
     #[serde(default)]
     pub verify_url: Option<String>,
+    /// Why the order was declined.
+    #[serde(default)]
+    pub error: Option<SolidGateApiError>,
 }
 
 impl CardOrderResponse {
@@ -240,6 +243,22 @@ mod tests {
             serde_json::from_str(r#"{"order_id": "o1", "status": "3ds_verify"}"#)
                 .expect("3ds_verify is a known status");
         assert_eq!(order.status, CardOrderStatus::ThreeDsVerify);
+    }
+
+    #[test]
+    fn declined_order_parses_with_error() {
+        let body = r#"{
+            "order": {"order_id": "academy-1", "amount": 4999, "currency": "USD", "status": "auth_failed"},
+            "error": {"code": "2.18", "messages": ["Invalid product ID"]},
+            "transactions": {"t1": {"id": "t1", "operation": "recurring-auth", "status": "fail",
+                                    "error": {"code": "2.18", "messages": ["Invalid product ID"]}}}
+        }"#;
+        let response: CardOrderResponse =
+            serde_json::from_str(body).expect("a declined order must parse");
+        assert_eq!(response.order.status, CardOrderStatus::AuthFailed);
+        let error = response.error.expect("the decline reason is kept");
+        assert_eq!(error.code, "2.18");
+        assert_eq!(error.messages, vec!["Invalid product ID".to_string()]);
     }
 
     #[test]

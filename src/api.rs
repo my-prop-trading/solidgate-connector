@@ -378,9 +378,16 @@ impl SolidGateApi {
         // Masked merchant (public key) actually sent — so auth failures show which key was used.
         let merchant_prefix: String = self.public_key.chars().take(12).collect();
 
+        if ErrorEnvelope::carries_order(&body_str) {
+            return Ok(body_str);
+        }
+
         // SolidGate may return an error envelope even with a 2xx status — surface it
         // as a readable error instead of letting the caller fail to deserialize it.
-        if let Ok(ErrorEnvelope { error: Some(err) }) = serde_json::from_str(&body_str) {
+        if let Ok(ErrorEnvelope {
+            error: Some(err), ..
+        }) = serde_json::from_str(&body_str)
+        {
             return Err(format!(
                 "SolidGate API error {}: {}. Url: {method:?} {url}. merchant_prefix={merchant_prefix:?}. Raw response: {body_str}",
                 err.code,

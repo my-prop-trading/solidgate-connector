@@ -17,14 +17,46 @@ pub struct ApiResponse<T> {
 #[derive(Debug, Deserialize)]
 pub struct ErrorEnvelope {
     pub error: Option<SolidGateApiError>,
+    #[serde(default)]
+    pub order: Option<serde::de::IgnoredAny>,
+}
+
+impl ErrorEnvelope {
+    /// Whether the body answers with an order; an error beside it is the order's decline reason.
+    pub fn carries_order(body: &str) -> bool {
+        serde_json::from_str::<Self>(body).is_ok_and(|envelope| envelope.order.is_some())
+    }
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SolidGateApiError {
     #[serde(default)]
     pub code: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_messages")]
     pub messages: Vec<String>,
+}
+
+/// Reads SolidGate messages: a list, or each invalid field with its list, as `field: message`.
+fn deserialize_messages<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Messages {
+        List(Vec<String>),
+        ByField(std::collections::BTreeMap<String, Vec<String>>),
+        Other(serde_json::Value),
+    }
+    Ok(match Messages::deserialize(deserializer)? {
+        Messages::List(list) => list,
+        Messages::ByField(fields) => fields
+            .into_iter()
+            .flat_map(|(field, messages)| {
+                messages.into_iter().map(move |m| format!("{field}: {m}"))
+            })
+            .collect(),
+        Messages::Other(value) => vec![value.to_string()],
+    })
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -187,6 +219,22 @@ mod tests {
         let err = env.error.expect("error present");
         assert_eq!(err.code, "1.01");
         assert_eq!(err.messages, vec!["Authentication failed".to_string()]);
+    }
+
+    #[test]
+    fn error_messages_by_field_parse() {
+        let raw = r#"{"error":{"code":"2.01","messages":{"order":["Order not found."]}}}"#;
+        let env: ErrorEnvelope = serde_json::from_str(raw).unwrap();
+        let err = env.error.expect("error present");
+        assert_eq!(err.code, "2.01");
+        assert_eq!(err.messages, vec!["order: Order not found.".to_string()]);
+        assert!(!ErrorEnvelope::carries_order(raw));
+    }
+
+    #[test]
+    fn error_beside_order_carries_order() {
+        let raw = r#"{"order":{"order_id":"o1","status":"auth_failed"},"error":{"code":"2.18","messages":["Invalid product ID"]}}"#;
+        assert!(ErrorEnvelope::carries_order(raw));
     }
 
     #[test]
