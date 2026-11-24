@@ -40,7 +40,9 @@ pub struct RecurringRequest {
     pub customer_account_id: Option<String>,
     pub ip_address: String,
     pub platform: Platform,
-    pub product_id: String,
+    /// Without one, `amount` and `currency` set the price.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub product_id: Option<String>,
     /// Where the customer returns after 3DS.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub success_url: Option<String>,
@@ -253,7 +255,7 @@ mod tests {
             customer_account_id: None,
             ip_address: "203.0.113.0".to_string(),
             platform: Platform::Web,
-            product_id: "p1".to_string(),
+            product_id: None,
             success_url: None,
             fail_url: None,
         };
@@ -261,6 +263,7 @@ mod tests {
         assert_eq!(json["payment_type"], "1-click");
         assert_eq!(json["platform"], "WEB");
         assert!(json.get("success_url").is_none());
+        assert!(json.get("product_id").is_none());
     }
 
     #[test]
